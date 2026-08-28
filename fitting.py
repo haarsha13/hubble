@@ -39,7 +39,7 @@ def optimise_optimistix(params, model, exposures, project=True, diag=False, nbat
         nbatches=len(exposures)*5
     if project:
         f = lambda params: loss_fn(params, exposures, model)
-        F, unflatten = zdx.batching.hessian(f, ModelParams(params), nbatches=nbatches, checkpoint=True)
+        F, unflatten = zdx.hessian(f, ModelParams(params), nbatches=nbatches, checkpoint=True)
         if diag:
             F = np.diag(np.diag(F))
             
@@ -71,7 +71,7 @@ def optimise_new(params, model, exposures, optimisers, epochs, diag=True, nbatch
         C = use_c
     else:
         f = lambda params: loss_fn(ModelParams(params), exposures, model)
-        F, unflatten = zdx.batching.hessian(f, params, nbatches=nbatches, checkpoint=True)
+        F, unflatten = zdx.hessian(f, params, nbatches=nbatches, checkpoint=True)
 
         if diag:
             C = dlu.nandiv(1, np.abs((np.diag(F))), fill=0.)
