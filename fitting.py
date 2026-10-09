@@ -43,14 +43,17 @@ def optimise_optimistix(
     nbatches=None,
     scales=None,
     max_steps=1024,
+    progress=True,
+    progress_desc="BFGS",
 ):
 
     if nbatches is None:
         nbatches = len(exposures) * 5
 
-    # --------------------------------------------------
+    # ==================================================
     # Fisher / Hessian projection
-    # --------------------------------------------------
+    # ==================================================
+
     if project:
 
         f = lambda params: loss_fn(
@@ -83,17 +86,19 @@ def optimise_optimistix(
         )
 
 
-    # --------------------------------------------------
+    # ==================================================
     # Flatten starting parameters
-    # --------------------------------------------------
+    # ==================================================
+
     params = ModelParams(params)
 
     X0, unravel = ravel_pytree(params)
 
 
-    # --------------------------------------------------
+    # ==================================================
     # Projection matrix
-    # --------------------------------------------------
+    # ==================================================
+
     if project:
 
         P = zdx.optimisation.eigen_projection(
@@ -105,9 +110,10 @@ def optimise_optimistix(
         P = np.eye(X0.shape[0])
 
 
-    # --------------------------------------------------
-    # Manual parameter scaling
-    # --------------------------------------------------
+    # ==================================================
+    # Parameter scaling
+    # ==================================================
+
     if scales is None:
 
         scale_vector = np.ones_like(X0)
@@ -119,26 +125,66 @@ def optimise_optimistix(
         )
 
         if scale_vector.shape != X0.shape:
-
             raise ValueError(
                 "Scale tree does not match parameter tree."
             )
 
 
-    # u is dimensionless.
-    # scale_vector controls the physical step size
-    # for each parameter.
+    # Convert the dimensionless optimiser coordinates
+    # back into the physical model parameters.
     project_fn = lambda u: unravel(
-        X0
-        + scale_vector * np.dot(P, u)
+        X0 + scale_vector * np.dot(P, u)
     )
 
     X = np.zeros(P.shape[-1])
 
 
-    # --------------------------------------------------
-    # LBFGS optimisation
-    # --------------------------------------------------
+    # ==================================================
+    # Progress bar
+    # ==================================================
+
+    if progress:
+
+        pbar = tqdm(
+            total=max_steps,
+            desc=progress_desc,
+            unit="step"
+        )
+
+        def progress_callback(**kwargs):
+
+            # Optimistix calls this once for each solver step
+            pbar.update(1)
+
+            # Find the current loss supplied by Optimistix
+            for item in kwargs.values():
+
+                if isinstance(item, tuple) and len(item) == 2:
+
+                    label, value = item
+
+                    if label == "Loss on this step":
+
+                        try:
+                            loss_value = float(value)
+
+                            pbar.set_postfix(
+                                loss=f"{loss_value:.4e}"
+                            )
+
+                        except (TypeError, ValueError):
+                            pass
+
+    else:
+
+        pbar = None
+        progress_callback = False
+
+
+    # ==================================================
+    # LBFGS
+    # ==================================================
+
     args = (
         exposures,
         model,
@@ -148,18 +194,27 @@ def optimise_optimistix(
     solver = optx.BestSoFarMinimiser(
         optx.LBFGS(
             rtol=1e-6,
-            atol=1e-6
+            atol=1e-6,
+            verbose=progress_callback
         )
     )
 
-    sol = optx.minimise(
-        projected_loss_fn,
-        solver,
-        X,
-        args,
-        max_steps=max_steps,
-        throw=False
-    )
+    try:
+
+        sol = optx.minimise(
+            projected_loss_fn,
+            solver,
+            X,
+            args,
+            max_steps=max_steps,
+            throw=False
+        )
+
+    finally:
+
+        if pbar is not None:
+            pbar.close()
+
 
     return project_fn(sol.value)
 
