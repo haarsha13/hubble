@@ -173,3 +173,6 @@ data/MAST_*.fits
 batch/*/*
 data/MAST_*/*
 *.pdf
+# Local MAST data and pipeline results
+FOSE7902/data/
+results/
