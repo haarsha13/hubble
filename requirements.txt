@@ -1,0 +1,15 @@
+abcdLux==0.0.2
+dLux==0.15.1
+equinox==0.13.8
+jax==0.10.2
+jaxlib==0.10.2
+matplotlib==3.11.0
+numpy==2.4.6
+numpyro==0.21.0
+optax==0.2.8
+optimistix==0.1.0
+tqdm==4.70.0
+zodiax==0.5.0
+astropy
+scipy
+ipykernel
