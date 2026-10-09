@@ -153,13 +153,13 @@ class NICMOSFresnelOptics(dl.AngularOpticalSystem):
         self.layers = dlu.list2dictionary(layers, ordered=True)
     
     def propagate_mono(self, wavelength, offset=np.zeros(2), return_wf=False):
-        
-        wf = dl.Wavefront(self.wf_npixels, self.diameter, wavelength)
+
+        wf = dl.Wavefront(wavelength, self.wf_npixels, diameter=self.diameter)
         wf = wf.tilt(offset)
 
         # Apply layers
         for layer in list(self.layers.values()):
-            wf *= layer
+            wf = layer(wf)
 
         u_in = wf.phasor
 
@@ -176,12 +176,9 @@ class NICMOSFresnelOptics(dl.AngularOpticalSystem):
         x_in = dlu.nd_coords(N_in, dx_in)
         x_out = dlu.nd_coords(N_out, dx_out)
 
-        u_out = lct_prop_basic(u_in, x_in, x_out, wavelength, abcd)
+        u_out = lct_prop(u_in, x_in, x_out, wavelength, abcd)
 
-
-        wf = dl.Wavefront(N_out, N_out*dx_out, wavelength).set(
-            ["amplitude", "phase"], [np.abs(u_out), np.angle(u_out)]
-        )
+        wf = dl.Wavefront(wavelength, N_out, diameter=N_out*dx_out).set("phasor", u_out)
 
         if return_wf:
             return wf
@@ -226,12 +223,12 @@ class NICMOSSecondaryFresnelOptics(dl.AngularOpticalSystem):
     
     def propagate_mono(self, wavelength, offset=np.zeros(2), return_wf=False):
 
-        wf = dl.Wavefront(self.wf_npixels, self.diameter,wavelength)
+        wf = dl.Wavefront(wavelength, self.wf_npixels, diameter=self.diameter)
         wf = wf.tilt(offset)
 
         # Apply layers
         for layer in list(self.layers.values()):
-            wf *= layer
+            wf = layer(wf)
 
         u_in = wf.phasor
 
@@ -253,12 +250,9 @@ class NICMOSSecondaryFresnelOptics(dl.AngularOpticalSystem):
         x_in = dlu.nd_coords(N_in, dx_in)
         x_out = dlu.nd_coords(N_out, dx_out)
 
-        u_out = lct_prop_basic(u_in, x_in, x_out, wavelength, abcd)
+        u_out = lct_prop(u_in, x_in, x_out, wavelength, abcd)
 
-        wf = dl.Wavefront(N_out, N_out*dx_out,wavelength).set(
-            ["amplitude", "phase"], [np.abs(u_out), np.angle(u_out)]
-        )
-        
+        wf = dl.Wavefront(wavelength, N_out, diameter=N_out*dx_out).set("phasor", u_out)
 
         if return_wf:
             return wf

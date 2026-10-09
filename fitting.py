@@ -34,35 +34,133 @@ def loss_fn(params, exposures, model):
     mdl = params.inject(model)
     return np.nansum(np.asarray([posterior(mdl,exposure) for exposure in exposures]))
 
-def optimise_optimistix(params, model, exposures, project=True, diag=False, nbatches=None):
-    if not nbatches:
-        nbatches=len(exposures)*5
+def optimise_optimistix(
+    params,
+    model,
+    exposures,
+    project=True,
+    diag=False,
+    nbatches=None,
+    scales=None,
+    max_steps=1024,
+):
+
+    if nbatches is None:
+        nbatches = len(exposures) * 5
+
+    # --------------------------------------------------
+    # Fisher / Hessian projection
+    # --------------------------------------------------
     if project:
-        f = lambda params: loss_fn(params, exposures, model)
-        F, unflatten = zdx.batching.hessian(f, ModelParams(params), nbatches=nbatches, checkpoint=True)
+
+        f = lambda params: loss_fn(
+            params,
+            exposures,
+            model
+        )
+
+        F, unflatten = zdx.hessian(
+            f,
+            ModelParams(params),
+            nbatches=nbatches,
+            checkpoint=True
+        )
+
         if diag:
             F = np.diag(np.diag(F))
-            
+
 
     def projected_loss_fn(u, args):
-        exposures, model, project_fn = args
-        params = project_fn(u)
-        return loss_fn(params, exposures, model)
 
-    # Estimate our initial parameters from the data
+        exposures, model, project_fn = args
+
+        params = project_fn(u)
+
+        return loss_fn(
+            params,
+            exposures,
+            model
+        )
+
+
+    # --------------------------------------------------
+    # Flatten starting parameters
+    # --------------------------------------------------
     params = ModelParams(params)
+
     X0, unravel = ravel_pytree(params)
 
-    # Generate the projection matrix P, projection function, and initial vector
-    P = zdx.optimisation.eigen_projection(fmat=F) if project else np.eye(X0.shape[0])
-    project_fn = lambda u: unravel(X0 + np.dot(P, u))
+
+    # --------------------------------------------------
+    # Projection matrix
+    # --------------------------------------------------
+    if project:
+
+        P = zdx.optimisation.eigen_projection(
+            fmat=F
+        )
+
+    else:
+
+        P = np.eye(X0.shape[0])
+
+
+    # --------------------------------------------------
+    # Manual parameter scaling
+    # --------------------------------------------------
+    if scales is None:
+
+        scale_vector = np.ones_like(X0)
+
+    else:
+
+        scale_vector, _ = ravel_pytree(
+            ModelParams(scales)
+        )
+
+        if scale_vector.shape != X0.shape:
+
+            raise ValueError(
+                "Scale tree does not match parameter tree."
+            )
+
+
+    # u is dimensionless.
+    # scale_vector controls the physical step size
+    # for each parameter.
+    project_fn = lambda u: unravel(
+        X0
+        + scale_vector * np.dot(P, u)
+    )
+
     X = np.zeros(P.shape[-1])
 
 
-    # Minimise algorithm
-    args = (exposures, model, project_fn)
-    solver = optx.BestSoFarMinimiser(optx.LBFGS(rtol=1e-6, atol=1e-6))
-    sol = optx.minimise(projected_loss_fn, solver, X, args, max_steps=1024, throw=False)
+    # --------------------------------------------------
+    # LBFGS optimisation
+    # --------------------------------------------------
+    args = (
+        exposures,
+        model,
+        project_fn
+    )
+
+    solver = optx.BestSoFarMinimiser(
+        optx.LBFGS(
+            rtol=1e-6,
+            atol=1e-6
+        )
+    )
+
+    sol = optx.minimise(
+        projected_loss_fn,
+        solver,
+        X,
+        args,
+        max_steps=max_steps,
+        throw=False
+    )
+
     return project_fn(sol.value)
 
 def optimise_new(params, model, exposures, optimisers, epochs, diag=True, nbatches=1, use_c=False, return_c=False):
@@ -71,7 +169,7 @@ def optimise_new(params, model, exposures, optimisers, epochs, diag=True, nbatch
         C = use_c
     else:
         f = lambda params: loss_fn(ModelParams(params), exposures, model)
-        F, unflatten = zdx.batching.hessian(f, params, nbatches=nbatches, checkpoint=True)
+        F, unflatten = zdx.hessian(f, params, nbatches=nbatches, checkpoint=True)
 
         if diag:
             C = dlu.nandiv(1, np.abs((np.diag(F))), fill=0.)
