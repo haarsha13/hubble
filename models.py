@@ -172,15 +172,23 @@ def exposure_from_file(fname, fit, extra_bad=None, crop=None):
     # print pipeline version - pipelines after 4.2 don't include photon noise
     print(hdr["CAL_VER"])
 
-    # crop image and adjust WCS accordingly
     if crop:
         w = WCS(image_hdr)
-        y,x = numpy.unravel_index(numpy.nanargmax(data),data.shape)
-        print(x,y)
-        centre = SkyCoord(w.pixel_to_world(x,y), unit='deg')
-        data = Cutout2D(data, centre, crop, wcs=w).data
-        err = Cutout2D(err, centre, crop, wcs=w).data
-        bad = Cutout2D(bad, centre, crop, wcs=w).data
+
+        y, x = numpy.unravel_index( numpy.nanargmax(data), data.shape )
+
+        print(x, y)
+
+        centre = SkyCoord( w.pixel_to_world(x, y), unit="deg" )
+
+        data_cutout = Cutout2D( data, centre, crop, wcs=w, mode="partial", fill_value=np.nan )
+
+        err_cutout = Cutout2D( err, centre, crop, wcs=w, mode="partial", fill_value=np.nan )
+        bad_cutout = Cutout2D( bad, centre, crop, wcs=w, mode="partial", fill_value=True )
+
+        data = np.asarray(data_cutout.data)
+        err = np.asarray(err_cutout.data)
+        bad = np.asarray(bad_cutout.data)
 
     # add in extra bad pixels
     if extra_bad is not None:
